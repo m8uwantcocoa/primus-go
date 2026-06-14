@@ -1,12 +1,15 @@
 package internal
 
 import (
+	"context"
+	"io"
+	"net/http"
 	"time"
 )
 
 type ApiEndpoint struct {
 	Name string
-	Url  string
+	URL  string
 }
 
 type Result struct {
@@ -14,4 +17,26 @@ type Result struct {
 	Body     []byte
 	Duration time.Duration
 	Error    error
+}
+
+func runner(ctx context.Context, endpoint ApiEndpoint, ch chan<- Result) {
+	start := time.Now()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.URL, nil)
+
+	if err != nil {
+		ch <- Result{Name: endpoint.Name, Error: err}
+		return
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+
+	if err != nil {
+		ch <- Result{Name: endpoint.Name, Error: err}
+		return
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+
+	ch <- Result{Name: endpoint.Name, Body: body, Duration: time.Since(start), Error: err}
 }
