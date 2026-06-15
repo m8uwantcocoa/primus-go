@@ -78,9 +78,13 @@ func runner(ctx context.Context, endpoint ApiEndpoint, ch chan<- Result) {
 // Race compares multiple API endpoints and returns the result of the first one that responds successfully.
 // It uses a context with a timeout to ensure that it doesn't wait indefinitely for any endpoint, you can change it as needed.
 // If all endpoints fail or time out, it returns an error indicating that all endpoints timed out.
-func Race(ctx context.Context, endpoints []ApiEndpoint) Result {
+func Race(ctx context.Context, endpoints []ApiEndpoint, timeoutMs int) Result {
+	if timeoutMs == 0 {
+		timeoutMs = 5000
+	}
+
 	ch := make(chan Result, len(endpoints))
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(timeoutMs)*time.Millisecond)
 
 	defer cancel()
 
@@ -92,6 +96,6 @@ func Race(ctx context.Context, endpoints []ApiEndpoint) Result {
 	case result := <-ch:
 		return result
 	case <-ctx.Done():
-		return Result{Error: fmt.Errorf("all endpoints timed out")}
+		return Result{Error: fmt.Errorf("all endpoints timed out after %d ms", timeoutMs)}
 	}
 }

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 
 type raceRequest struct {
 	Endpoints []internal.ApiEndpoint `json:"endpoints"`
+	TimeoutMs int                    `json:"timeout_ms"`
 }
 
 // StartServer initializes and starts the HTTP server that listens for incoming requests to the /race endpoint. It sets up
@@ -18,6 +20,7 @@ type raceRequest struct {
 // will print a message to the console when it starts successfully. If there are any issues with starting the server,
 // it will log the error accordingly.
 func StartServer() {
+	http.HandleFunc("/health", handleHealth)
 	http.HandleFunc("/race", handleRace)
 	fmt.Println("Server is running on port 8080...")
 	http.ListenAndServe(":8080", nil)
@@ -45,7 +48,7 @@ func handleRace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := internal.Race(r.Context(), req.Endpoints)
+	result := internal.Race(context.Background(), req.Endpoints, req.TimeoutMs)
 
 	if result.Error != nil {
 		http.Error(w, "sadly, all endpoints failed", http.StatusBadGateway)
@@ -56,4 +59,10 @@ func handleRace(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Winner", result.Name)
 	w.Header().Set("X-Duration", result.Duration.String())
 	w.Write(result.Body)
+}
+
+func handleHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"status": "ok"}`))
 }
