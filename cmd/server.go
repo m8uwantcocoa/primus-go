@@ -13,6 +13,10 @@ type raceRequest struct {
 	Endpoints []internal.ApiEndpoint `json:"endpoints"`
 }
 
+// StartServer initializes and starts the HTTP server that listens for incoming requests to the /race endpoint. It sets up
+// the necessary route and handles incoming requests using the handleRace function. The server runs on port 8080 and
+// will print a message to the console when it starts successfully. If there are any issues with starting the server,
+// it will log the error accordingly.
 func StartServer() {
 	http.HandleFunc("/race", handleRace)
 	fmt.Println("Server is running on port 8080...")

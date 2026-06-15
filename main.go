@@ -7,6 +7,6 @@ import (
 )
 
 func main() {
-	fmt.Println("primus-go starting...")
+	fmt.Println("primus-go starting... 3... 2... 1... Go!")
 	cmd.StartServer()
 }
