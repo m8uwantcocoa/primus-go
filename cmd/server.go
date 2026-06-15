@@ -22,6 +22,7 @@ type raceRequest struct {
 func StartServer() {
 	http.HandleFunc("/health", handleHealth)
 	http.HandleFunc("/race", handleRace)
+	http.HandleFunc("/race/all", handleRaceAll)
 	fmt.Println("Server is running on port 8080...")
 	http.ListenAndServe(":8080", nil)
 }
@@ -65,4 +66,50 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"status": "ok"}`))
+}
+
+func handleRaceAll(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "only POST method is allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "failed to read request body", http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+
+	var req raceRequest
+	err = json.Unmarshal(body, &req)
+	if err != nil {
+		http.Error(w, "invalid JSON format", http.StatusBadRequest)
+		return
+	}
+
+	results := internal.RaceAll(context.Background(), req.Endpoints, req.TimeoutMs)
+
+	type resultResponse struct {
+		Name     string `json:"name"`
+		Duration string `json:"duration"`
+		Error    string `json:"error,omitempty"`
+		Winner   bool   `json:"winner"`
+	}
+
+	var responses []resultResponse
+	for i, result := range results {
+		r := resultResponse{
+			Name:     result.Name,
+			Duration: result.Duration.String(),
+			Winner:   i == 0,
+		}
+		if result.Error != nil {
+			r.Error = result.Error.Error()
+		}
+		responses = append(responses, r)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(responses)
 }

@@ -99,3 +99,29 @@ func Race(ctx context.Context, endpoints []ApiEndpoint, timeoutMs int) Result {
 		return Result{Error: fmt.Errorf("all endpoints timed out after %d ms", timeoutMs)}
 	}
 }
+
+// RaceAll compares multiple API endpoints and returns the results of all endpoints that respond successfully
+// within the specified timeout. It uses a context with a timeout to ensure that it doesn't wait indefinitely for any
+// endpoint. If an endpoint fails or times out, it captures the error in the Result struct for that endpoint. This
+// function allows you to get a comprehensive view of how all endpoints performed, rather than just the first successful
+func RaceAll(ctx context.Context, endpoints []ApiEndpoint, timeoutMs int) []Result {
+	if timeoutMs == 0 {
+		timeoutMs = 5000
+	}
+	ch := make(chan Result, len(endpoints))
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(timeoutMs)*time.Millisecond)
+
+	defer cancel()
+
+	for _, endpoint := range endpoints {
+		go runner(ctx, endpoint, ch)
+	}
+
+	results := make([]Result, 0, len(endpoints))
+
+	for range endpoints {
+		results = append(results, <-ch)
+	}
+
+	return results
+}
