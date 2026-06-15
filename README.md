@@ -33,7 +33,7 @@ primus-go starting... 3... 2... 1... Go!
 
 ## What is this?
 
-`primus-go` is a small HTTP server written in Go that races multiple API endpoints against each other and returns the response from whichever one replies first.
+`primus-go` is a small HTTP server written in Go that races multiple API endpoints (including LLMs) against each other and returns the response from whichever one replies first.
 
 You send it a list of endpoints. It fires them all simultaneously using goroutines. The first one that responds wins — the others get cancelled via context. Simple as that.
 
@@ -41,6 +41,7 @@ This is useful when:
 - You have redundant services or mirrors and want the fastest one
 - You're comparing response times between different providers (e.g. two LLM APIs)
 - You want automatic failover without complex load-balancing setup
+- LLM providers are chained as fallbacks: Gemini → Groq (Llama) → Cohere. If one fails or hits a rate limit, the next is tried automatically
 - Pretty much: if you need to guarantee your users always get a response from the fastest available source, this is the layer that makes that happen
 
 ---
