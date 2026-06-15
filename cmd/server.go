@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 
 	"github.com/m8uwantcocoa/primus-go/internal"
 )
@@ -38,8 +39,12 @@ func StartServer() {
 	http.HandleFunc("/race", withCORS(handleRace))
 	http.HandleFunc("/race/all", withCORS(handleRaceAll))
 	http.HandleFunc("/race/benchmark", withCORS(handleBenchmark))
-	fmt.Println("Server is running on port 8080...")
-	http.ListenAndServe(":8080", nil)
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	fmt.Printf("Server is running on port %s...\n", port)
+	http.ListenAndServe(":"+port, nil)
 }
 
 func handleRace(w http.ResponseWriter, r *http.Request) {
