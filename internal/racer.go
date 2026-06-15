@@ -2,15 +2,18 @@ package internal
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
 type ApiEndpoint struct {
-	Name string `json:"name"`
-	URL  string `json:"url"`
+	Name    string            `json:"name"`
+	URL     string            `json:"url"`
+	Method  string            `json:"method"`
+	Headers map[string]string `json:"headers"`
+	Body    string            `json:"body"`
 }
 
 type Result struct {
@@ -22,11 +25,26 @@ type Result struct {
 
 func runner(ctx context.Context, endpoint ApiEndpoint, ch chan<- Result) {
 	start := time.Now()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.URL, nil)
+
+	var bodyReader io.Reader
+
+	if endpoint.Body != "" {
+		bodyReader = strings.NewReader(endpoint.Body)
+	}
+
+	if endpoint.Method == "" {
+		endpoint.Method = http.MethodGet
+	}
+
+	req, err := http.NewRequestWithContext(ctx, endpoint.Method, endpoint.URL, bodyReader)
 
 	if err != nil {
 		ch <- Result{Name: endpoint.Name, Error: err}
 		return
+	}
+
+	for key, value := range endpoint.Headers {
+		req.Header.Set(key, value)
 	}
 
 	resp, err := http.DefaultClient.Do(req)
@@ -35,12 +53,17 @@ func runner(ctx context.Context, endpoint ApiEndpoint, ch chan<- Result) {
 		ch <- Result{Name: endpoint.Name, Error: err}
 		return
 	}
+
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
-	fmt.Printf("runner %s got %d bytes in %s\n", endpoint.Name, len(body), time.Since(start))
 
-	ch <- Result{Name: endpoint.Name, Body: body, Duration: time.Since(start), Error: err}
+	if err != nil {
+		ch <- Result{Name: endpoint.Name, Error: err}
+		return
+	}
+
+	ch <- Result{Name: endpoint.Name, Body: body, Duration: time.Since(start)}
 }
 
 func Race(ctx context.Context, endpoints []ApiEndpoint) Result {
