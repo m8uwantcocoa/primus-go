@@ -2,14 +2,15 @@ package internal
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"time"
 )
 
 type ApiEndpoint struct {
-	Name string
-	URL  string
+	Name string `json:"name"`
+	URL  string `json:"url"`
 }
 
 type Result struct {
@@ -37,6 +38,7 @@ func runner(ctx context.Context, endpoint ApiEndpoint, ch chan<- Result) {
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
+	fmt.Printf("runner %s got %d bytes in %s\n", endpoint.Name, len(body), time.Since(start))
 
 	ch <- Result{Name: endpoint.Name, Body: body, Duration: time.Since(start), Error: err}
 }
