@@ -1,0 +1,21 @@
+# Go
+*.exe
+*.test
+*.out
+vendor/
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Frontend (lives in its own private repo)
+web/
+
+# Skills / agents
+.agents/
+skills-lock.json
+
+# OS
+.DS_Store
+Thumbs.db

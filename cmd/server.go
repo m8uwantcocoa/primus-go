@@ -16,15 +16,28 @@ type raceRequest struct {
 	Benchmark internal.BenchmarkRequest `json:"benchmark"`
 }
 
+func withCORS(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		h(w, r)
+	}
+}
+
 // StartServer initializes and starts the HTTP server that listens for incoming requests to the /race endpoint. It sets up
 // the necessary route and handles incoming requests using the handleRace function. The server runs on port 8080 and
 // will print a message to the console when it starts successfully. If there are any issues with starting the server,
 // it will log the error accordingly.
 func StartServer() {
-	http.HandleFunc("/health", handleHealth)
-	http.HandleFunc("/race", handleRace)
-	http.HandleFunc("/race/all", handleRaceAll)
-	http.HandleFunc("/race/benchmark", handleBenchmark)
+	http.HandleFunc("/health", withCORS(handleHealth))
+	http.HandleFunc("/race", withCORS(handleRace))
+	http.HandleFunc("/race/all", withCORS(handleRaceAll))
+	http.HandleFunc("/race/benchmark", withCORS(handleBenchmark))
 	fmt.Println("Server is running on port 8080...")
 	http.ListenAndServe(":8080", nil)
 }
