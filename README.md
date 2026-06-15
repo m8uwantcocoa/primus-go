@@ -15,7 +15,7 @@ primus-go starting... 3... 2... 1... Go!
 
 ## Live Demo
 
-**[→ Try it here](https://primus-daqyeczmh-emres-projects-27e6b64b.vercel.app/)**
+**[→ Try it here](https://primus-web.vercel.app/)**
 
 > **The demo is limited.** It runs a hosted version of the frontend connected to a shared backend.
 >
