@@ -23,7 +23,7 @@ This is useful when:
 - You have redundant services or mirrors and want the fastest one
 - You're comparing response times between different providers (e.g. two LLM APIs)
 - You want automatic failover without complex load-balancing setup
-- Pretty much : if you need to guarantee your users always get a response from the fastest available source, this is the layer that makes that happen
+- Pretty much: if you need to guarantee your users always get a response from the fastest available source, this is the layer that makes that happen
 
 ---
 
@@ -35,7 +35,7 @@ Client ──POST /race──► primus-go ──► [endpoint A]
                                   ──► [endpoint C]
 ```
 
-All endpoints are called concurrently. The moment the first successful response comes back, it's forwarded to the client and the rest are cancelled. If none respond within **5 seconds**, the server returns a `502`.
+All endpoints are called concurrently. The moment the first successful response comes back, it's forwarded to the client and the rest are cancelled. If none respond within the timeout, the server returns a `502`.
 
 ---
 
@@ -53,11 +53,34 @@ The server starts on port `8080`.
 
 ---
 
-## Usage
+## Endpoints
 
-### As an external server
+| Endpoint | Method | Description |
+|---|---|---|
+| `/health` | GET | Health check |
+| `/race` | POST | Race endpoints, return the first winner |
+| `/race/all` | POST | Race endpoints, return results from all of them |
+| `/race/benchmark` | POST | Run repeated races and collect performance stats |
 
-Run `primus-go` as a standalone service and point your app at it. Send a `POST` request to `/race` with a JSON body listing the endpoints you want to race:
+---
+
+## `/health`
+
+A simple liveness check. No body required.
+
+```bash
+curl http://localhost:8080/health
+```
+
+```json
+{"status": "ok"}
+```
+
+---
+
+## `/race`
+
+Fires all endpoints simultaneously and returns the response body from whichever one replies first. The rest are cancelled.
 
 ```bash
 curl -X POST http://localhost:8080/race \
@@ -78,62 +101,153 @@ curl -X POST http://localhost:8080/race \
   }'
 ```
 
-Or from Go code:
+**Response headers:**
 
-```go
-package main
+| Header | Description |
+|---|---|
+| `X-Winner` | The `name` of the endpoint that responded first |
+| `X-Duration` | How long that endpoint took to respond |
 
-import (
-    "bytes"
-    "encoding/json"
-    "fmt"
-    "io"
-    "net/http"
-)
-
-func main() {
-    payload := map[string]any{
-        "endpoints": []map[string]any{
-            {"name": "primary", "url": "https://api.example.com/data", "method": "GET"},
-            {"name": "backup",  "url": "https://backup.example.com/data", "method": "GET"},
-        },
-    }
-
-    body, _ := json.Marshal(payload)
-    resp, _ := http.Post("http://localhost:8080/race", "application/json", bytes.NewReader(body))
-    defer resp.Body.Close()
-
-    result, _ := io.ReadAll(resp.Body)
-    fmt.Println("Winner:", resp.Header.Get("X-Winner"))
-    fmt.Println("Took:  ", resp.Header.Get("X-Duration"))
-    fmt.Println("Body:  ", string(result))
-}
-```
-
-### Imported into your own Go project
-
-You can embed the server directly in your own Go app by importing the `cmd` package:
-
-```bash
-go get github.com/m8uwantcocoa/primus-go/cmd
-```
-
-```go
-package main
-
-import "github.com/m8uwantcocoa/primus-go/cmd"
-
-func main() {
-    // starts the /race endpoint on :8080, blocking
-    cmd.StartServer()
-}
-```
-
-This is useful if you want `primus-go` to be one handler among others in a larger service, or if you want to control startup yourself without running it as a separate process.
+The response body is whatever the winning endpoint returned.
 
 ---
 
-You can also pass headers and a request body per endpoint, which makes it work with POST-based APIs and ML model endpoints too:
+## `/race/all`
+
+Same as `/race`, but instead of returning on the first winner, it waits for **all** endpoints to finish and returns a ranked list. Useful when you want to see how every endpoint performed, not just who won.
+
+```bash
+curl -X POST http://localhost:8080/race/all \
+  -H "Content-Type: application/json" \
+  -d '{
+    "endpoints": [
+      {"name": "fast-api",  "url": "https://api.example.com/ping",   "method": "GET"},
+      {"name": "slow-api",  "url": "https://api.example2.com/ping",  "method": "GET"},
+      {"name": "third-api", "url": "https://api.example3.com/ping",  "method": "GET"}
+    ]
+  }'
+```
+
+**Response:**
+
+```json
+[
+  {"name": "fast-api",  "duration": "112ms", "winner": true},
+  {"name": "third-api", "duration": "230ms", "winner": false},
+  {"name": "slow-api",  "duration": "418ms", "winner": false, "error": ""}
+]
+```
+
+Results are returned in the order they finished. The first entry (`"winner": true`) is the one that came back first.
+
+---
+
+## `/race/benchmark`
+
+Runs repeated races across your endpoints and collects performance statistics — average latency, fastest/slowest response, standard deviation, consistency rating, success rate, and win count. Optionally includes a load test to measure degradation under concurrency.
+
+```bash
+curl -X POST http://localhost:8080/race/benchmark \
+  -H "Content-Type: application/json" \
+  -d '{
+    "endpoints": [
+      {"name": "provider-a", "url": "https://api.provider-a.com/ping", "method": "GET"},
+      {"name": "provider-b", "url": "https://api.provider-b.com/ping", "method": "GET"}
+    ],
+    "benchmark": {
+      "runs": 10,
+      "concurrency": 5,
+      "include_load": true
+    }
+  }'
+```
+
+**Benchmark fields:**
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `runs` | int | `5` | How many sequential race rounds to run |
+| `concurrency` | int | `3` | Number of concurrent workers used during the load test |
+| `include_load` | bool | `false` | Whether to run a load test in addition to the sequential runs |
+
+**Response:**
+
+```json
+[
+  {
+    "name": "provider-a",
+    "avg_ms": 143.2,
+    "fastest_ms": 98.0,
+    "slowest_ms": 201.0,
+    "std_dev_ms": 22.4,
+    "consistency": "good",
+    "success_rate": 100,
+    "wins": 7,
+    "avg_ms_under_load": 178.5,
+    "degradation": "none"
+  },
+  {
+    "name": "provider-b",
+    "avg_ms": 198.7,
+    "fastest_ms": 150.0,
+    "slowest_ms": 310.0,
+    "std_dev_ms": 55.1,
+    "consistency": "moderate",
+    "success_rate": 90,
+    "wins": 3,
+    "avg_ms_under_load": 340.2,
+    "degradation": "moderate"
+  }
+]
+```
+
+**Consistency ratings** (based on standard deviation):
+
+| Rating | Std Dev |
+|---|---|
+| `excellent` | < 10ms |
+| `good` | 10–30ms |
+| `moderate` | 30–60ms |
+| `unreliable` | > 60ms |
+
+**Degradation ratings** (load avg vs normal avg):
+
+| Rating | Slowdown |
+|---|---|
+| `none` | < 20% |
+| `moderate` | 20–50% |
+| `severe` | > 50% |
+
+`avg_ms_under_load` and `degradation` are only present when `include_load: true`.
+
+---
+
+## Configurable timeout
+
+Every endpoint accepts an optional `timeout_ms` field. If omitted, the default is **5000ms (5 seconds)**. If all endpoints fail or exceed the timeout, `/race` returns `502 Bad Gateway`.
+
+```json
+{
+  "timeout_ms": 2000,
+  "endpoints": [...]
+}
+```
+
+This works on all three POST endpoints (`/race`, `/race/all`, `/race/benchmark`).
+
+---
+
+## Endpoint fields
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | string | yes | A label for this endpoint (used in responses and headers) |
+| `url` | string | yes | The full URL to call |
+| `method` | string | no | HTTP method. Defaults to `GET` |
+| `headers` | object | no | Key-value pairs added to the request |
+| `body` | string | no | Request body (for POST/PUT requests) |
+
+You can also pass headers and a request body per endpoint, which makes it work with POST-based APIs and ML model endpoints:
 
 ```json
 {
@@ -162,37 +276,40 @@ You can also pass headers and a request body per endpoint, which makes it work w
 }
 ```
 
-### Response
-
-The response body is whatever the winning endpoint returned. Two extra headers tell you who won:
-
-| Header | Description |
-|---|---|
-| `X-Winner` | The `name` of the endpoint that responded first |
-| `X-Duration` | How long that endpoint took to respond |
-
 ---
 
-## Endpoint fields
+## Using as a Go package
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `name` | string | yes | A label for this endpoint (returned in `X-Winner`) |
-| `url` | string | yes | The full URL to call |
-| `method` | string | no | HTTP method. Defaults to `GET` |
-| `headers` | object | no | Key-value pairs added to the request |
-| `body` | string | no | Request body (for POST/PUT requests) |
+You can embed the server directly in your own Go app:
 
----
-
-## Timeout
-
-All races have a hard **5-second timeout**. If every endpoint fails or takes longer than that, the server responds with `502 Bad Gateway`.
-
-You can change the timeout in [internal/racer.go](internal/racer.go#L83):
+```bash
+go get github.com/m8uwantcocoa/primus-go/cmd
+```
 
 ```go
-ctx, cancel := context.WithTimeout(ctx, 5*time.Second) // change this
+package main
+
+import "github.com/m8uwantcocoa/primus-go/cmd"
+
+func main() {
+    cmd.StartServer() // starts all endpoints on :8080, blocking
+}
+```
+
+Or call the core functions directly from `internal`:
+
+```go
+import "github.com/m8uwantcocoa/primus-go/internal"
+
+// Race — returns the first winner
+result := internal.Race(ctx, endpoints, 3000)
+
+// RaceAll — returns all results
+results := internal.RaceAll(ctx, endpoints, 3000)
+
+// Benchmark — returns performance stats
+config := internal.BenchmarkRequest{Runs: 10, Concurrency: 5, IncludeLoad: true}
+stats := internal.Benchmark(ctx, endpoints, config, 3000)
 ```
 
 ---
@@ -203,9 +320,9 @@ ctx, cancel := context.WithTimeout(ctx, 5*time.Second) // change this
 primus-go/
 ├── main.go              # entry point, starts the server
 ├── cmd/
-│   └── server.go        # HTTP server and /race handler
+│   └── server.go        # HTTP handlers for all endpoints
 └── internal/
-    └── racer.go         # core racing logic (goroutines + context)
+    └── racer.go         # Race, RaceAll, Benchmark logic
 ```
 
 ---
@@ -215,7 +332,8 @@ primus-go/
 - Pure Go standard library — no external dependencies
 - `net/http` for the server
 - Goroutines + channels for concurrent requests
-- `context.WithTimeout` for the race timeout and cancellation
+- `context.WithTimeout` for race timeout and cancellation
+- `sync.WaitGroup` for load test concurrency
 
 ---
 

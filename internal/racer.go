@@ -231,7 +231,6 @@ func Benchmark(ctx context.Context, endpoints []ApiEndpoint, config BenchmarkReq
 		config.Concurrency = 3
 	}
 
-	// collect normal run durations per endpoint
 	durations := make(map[string][]float64)
 	wins := make(map[string]int)
 	errors := make(map[string]int)
@@ -250,7 +249,6 @@ func Benchmark(ctx context.Context, endpoints []ApiEndpoint, config BenchmarkReq
 		}
 	}
 
-	// build results
 	var benchResults []BenchmarkResult
 	for _, endpoint := range endpoints {
 		avg, fastest, slowest, stdDev := calculateStats(durations[endpoint.Name])
