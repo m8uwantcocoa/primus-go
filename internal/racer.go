@@ -32,6 +32,35 @@ type Result struct {
 	Error    error
 }
 
+// BenchmarkRequest represents the structure of a benchmark request, which includes the number of runs,
+// the level of concurrency, and whether to include load testing. This structure can be used to configure the parameters
+// of a benchmark test, allowing for flexible and customizable benchmarking of API endpoints or other services. You can
+// further enhance this structure by adding more fields as needed, such as specific metrics to collect, thresholds for
+// performance, etc.
+type BenchmarkRequest struct {
+	Runs        int  `json:"runs"`
+	Concurrency int  `json:"concurrency"`
+	IncludeLoad bool `json:"include_load"`
+}
+
+// BenchmarkResult represents the outcome of a benchmark test, including the name of the endpoint, average response time,
+// fastest and slowest response times, standard deviation, consistency, success rate, number of wins, and optional fields
+// for average response time under load and degradation. This structure allows us to capture comprehensive information about
+// the performance of an API endpoint or service under benchmark testing, which can be useful for performance analysis and optimization.
+// You can also add more fields here if needed, such as specific percentiles, error rates, etc.
+type BenchmarkResult struct {
+	Name           string  `json:"name"`
+	AvgMs          float64 `json:"avg_ms"`
+	FastestMs      float64 `json:"fastest_ms"`
+	SlowestMs      float64 `json:"slowest_ms"`
+	StdDevMs       float64 `json:"std_dev_ms"`
+	Consistency    string  `json:"consistency"`
+	SuccessRate    float64 `json:"success_rate"`
+	Wins           int     `json:"wins"`
+	AvgMsUnderLoad float64 `json:"avg_ms_under_load,omitempty"`
+	Degradation    string  `json:"degradation,omitempty"`
+}
+
 func runner(ctx context.Context, endpoint ApiEndpoint, ch chan<- Result) {
 	start := time.Now()
 
