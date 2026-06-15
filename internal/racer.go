@@ -40,3 +40,15 @@ func runner(ctx context.Context, endpoint ApiEndpoint, ch chan<- Result) {
 
 	ch <- Result{Name: endpoint.Name, Body: body, Duration: time.Since(start), Error: err}
 }
+
+func Race(ctx context.Context, endpoints []ApiEndpoint) Result {
+	ch := make(chan Result, len(endpoints))
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	for _, endpoint := range endpoints {
+		go runner(ctx, endpoint, ch)
+	}
+
+	return <-ch
+}
