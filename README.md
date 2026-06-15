@@ -13,6 +13,24 @@ primus-go starting... 3... 2... 1... Go!
 
 ---
 
+## Live Demo
+
+**[→ Try it here](https://primus-daqyeczmh-emres-projects-27e6b64b.vercel.app/)**
+
+> **The demo is limited.** It runs a hosted version of the frontend connected to a shared backend.
+>
+> | Feature | Demo | Self-hosted |
+> |---|---|---|
+> | `/race` — fastest wins | ✅ Up to 5 endpoints | ✅ Unlimited |
+> | `/race/all` — ranked results | ✅ Up to 5 endpoints | ✅ Unlimited |
+> | `/race/benchmark` — performance stats | ❌ Not available | ✅ Full access |
+> | Concurrency & load testing | ❌ Not available | ✅ Full access |
+> | Custom timeout | ✅ | ✅ |
+>
+> To get the full experience, clone and run it yourself — see [Getting started](#getting-started).
+
+---
+
 ## What is this?
 
 `primus-go` is a small HTTP server written in Go that races multiple API endpoints against each other and returns the response from whichever one replies first.
