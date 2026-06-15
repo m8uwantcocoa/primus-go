@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -153,4 +155,151 @@ func RaceAll(ctx context.Context, endpoints []ApiEndpoint, timeoutMs int) []Resu
 	}
 
 	return results
+}
+
+func calculateStats(durations []float64) (avg, fastest, slowest, stdDev float64) {
+	if len(durations) == 0 {
+		return
+	}
+
+	fastest = durations[0]
+	slowest = durations[0]
+
+	for _, d := range durations {
+		avg += d
+		if d < fastest {
+			fastest = d
+		}
+		if d > slowest {
+			slowest = d
+		}
+	}
+
+	avg = avg / float64(len(durations))
+
+	for _, d := range durations {
+		diff := d - avg
+		stdDev += diff * diff
+	}
+	stdDev = math.Sqrt(stdDev / float64(len(durations)))
+
+	return
+}
+
+func consistencyLabel(stdDev float64) string {
+	switch {
+	case stdDev < 10:
+		return "excellent"
+	case stdDev < 30:
+		return "good"
+	case stdDev < 60:
+		return "moderate"
+	default:
+		return "unreliable"
+	}
+}
+
+func degradationLabel(normalAvg, loadAvg float64) string {
+	if normalAvg == 0 {
+		return "unknown"
+	}
+	pct := ((loadAvg - normalAvg) / normalAvg) * 100
+	switch {
+	case pct < 20:
+		return "none"
+	case pct < 50:
+		return "moderate"
+	default:
+		return "severe"
+	}
+}
+
+// Benchmark runs multiple iterations of RaceAll to collect performance data for each endpoint, including average
+// response time, fastest and slowest response times, standard deviation, consistency, success rate, and wins. It also
+// optionally includes load testing data. The function takes a context, a list of API endpoints, a benchmark configuration,
+// and a timeout in milliseconds. It returns a slice of BenchmarkResult structs containing the performance metrics for
+// each endpoint. This function allows you to thoroughly evaluate the performance of your API endpoints under various
+// conditions and configurations, providing valuable insights for optimization and decision-making.
+func Benchmark(ctx context.Context, endpoints []ApiEndpoint, config BenchmarkRequest, timeoutMs int) []BenchmarkResult {
+	if timeoutMs == 0 {
+		timeoutMs = 5000
+	}
+	if config.Runs == 0 {
+		config.Runs = 5
+	}
+	if config.Concurrency == 0 {
+		config.Concurrency = 3
+	}
+
+	// collect normal run durations per endpoint
+	durations := make(map[string][]float64)
+	wins := make(map[string]int)
+	errors := make(map[string]int)
+
+	for i := 0; i < config.Runs; i++ {
+		results := RaceAll(ctx, endpoints, timeoutMs)
+		for j, result := range results {
+			if result.Error != nil {
+				errors[result.Name]++
+				continue
+			}
+			durations[result.Name] = append(durations[result.Name], float64(result.Duration.Milliseconds()))
+			if j == 0 {
+				wins[result.Name]++
+			}
+		}
+	}
+
+	// build results
+	var benchResults []BenchmarkResult
+	for _, endpoint := range endpoints {
+		avg, fastest, slowest, stdDev := calculateStats(durations[endpoint.Name])
+		successRate := float64(config.Runs-errors[endpoint.Name]) / float64(config.Runs) * 100
+
+		br := BenchmarkResult{
+			Name:        endpoint.Name,
+			AvgMs:       avg,
+			FastestMs:   fastest,
+			SlowestMs:   slowest,
+			StdDevMs:    stdDev,
+			Consistency: consistencyLabel(stdDev),
+			SuccessRate: successRate,
+			Wins:        wins[endpoint.Name],
+		}
+
+		benchResults = append(benchResults, br)
+	}
+	if config.IncludeLoad {
+		loadDurations := make(map[string][]float64)
+		loadErrors := make(map[string]int)
+
+		var wg sync.WaitGroup
+		var mu sync.Mutex
+
+		for i := 0; i < config.Concurrency; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				results := RaceAll(ctx, endpoints, timeoutMs)
+				mu.Lock()
+				for _, result := range results {
+					if result.Error != nil {
+						loadErrors[result.Name]++
+						continue
+					}
+					loadDurations[result.Name] = append(loadDurations[result.Name], float64(result.Duration.Milliseconds()))
+				}
+				mu.Unlock()
+			}()
+		}
+
+		wg.Wait()
+
+		for i, br := range benchResults {
+			loadAvg, _, _, _ := calculateStats(loadDurations[br.Name])
+			benchResults[i].AvgMsUnderLoad = loadAvg
+			benchResults[i].Degradation = degradationLabel(br.AvgMs, loadAvg)
+		}
+	}
+	return benchResults
 }

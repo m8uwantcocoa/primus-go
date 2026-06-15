@@ -11,8 +11,9 @@ import (
 )
 
 type raceRequest struct {
-	Endpoints []internal.ApiEndpoint `json:"endpoints"`
-	TimeoutMs int                    `json:"timeout_ms"`
+	Endpoints []internal.ApiEndpoint    `json:"endpoints"`
+	TimeoutMs int                       `json:"timeout_ms"`
+	Benchmark internal.BenchmarkRequest `json:"benchmark"`
 }
 
 // StartServer initializes and starts the HTTP server that listens for incoming requests to the /race endpoint. It sets up
@@ -23,6 +24,7 @@ func StartServer() {
 	http.HandleFunc("/health", handleHealth)
 	http.HandleFunc("/race", handleRace)
 	http.HandleFunc("/race/all", handleRaceAll)
+	http.HandleFunc("/race/benchmark", handleBenchmark)
 	fmt.Println("Server is running on port 8080...")
 	http.ListenAndServe(":8080", nil)
 }
@@ -112,4 +114,30 @@ func handleRaceAll(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(responses)
+}
+
+func handleBenchmark(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "only POST method is allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "failed to read request body", http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+
+	var req raceRequest
+	err = json.Unmarshal(body, &req)
+	if err != nil {
+		http.Error(w, "invalid JSON format", http.StatusBadRequest)
+		return
+	}
+
+	results := internal.Benchmark(context.Background(), req.Endpoints, req.Benchmark, req.TimeoutMs)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(results)
 }
