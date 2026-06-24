@@ -63,6 +63,19 @@ type BenchmarkResult struct {
 	Degradation    string  `json:"degradation,omitempty"`
 }
 
+// withDefaults fills in a display name for any endpoint that was sent without one,
+// falling back to the URL so every Result can be identified. It mutates and returns
+// the same slice. This keeps the winner header and the Race All / Benchmark rows from
+// coming back blank when the caller didn't bother naming an endpoint.
+func withDefaults(endpoints []ApiEndpoint) []ApiEndpoint {
+	for i := range endpoints {
+		if endpoints[i].Name == "" {
+			endpoints[i].Name = endpoints[i].URL
+		}
+	}
+	return endpoints
+}
+
 func runner(ctx context.Context, endpoint ApiEndpoint, ch chan<- Result) {
 	start := time.Now()
 
@@ -114,6 +127,7 @@ func Race(ctx context.Context, endpoints []ApiEndpoint, timeoutMs int) Result {
 		timeoutMs = 5000
 	}
 
+	endpoints = withDefaults(endpoints)
 	ch := make(chan Result, len(endpoints))
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(timeoutMs)*time.Millisecond)
 
@@ -139,6 +153,7 @@ func RaceAll(ctx context.Context, endpoints []ApiEndpoint, timeoutMs int) []Resu
 	if timeoutMs == 0 {
 		timeoutMs = 5000
 	}
+	endpoints = withDefaults(endpoints)
 	ch := make(chan Result, len(endpoints))
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(timeoutMs)*time.Millisecond)
 
@@ -230,6 +245,8 @@ func Benchmark(ctx context.Context, endpoints []ApiEndpoint, config BenchmarkReq
 	if config.Concurrency == 0 {
 		config.Concurrency = 3
 	}
+
+	endpoints = withDefaults(endpoints)
 
 	durations := make(map[string][]float64)
 	wins := make(map[string]int)
